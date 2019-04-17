@@ -48,6 +48,11 @@ ActiveRecord::Base.connection.instance_eval do
     t.integer :skill
     t.string :account_type, :default => :basic
     t.string :foo
+    t.integer :country
+  end
+
+  create_table :countries do |t|
+    t.string :name
   end
 
   create_table :documents do |t|
@@ -55,6 +60,12 @@ ActiveRecord::Base.connection.instance_eval do
     t.string :visibility
     t.integer :status
     t.timestamps null: true
+  end
+end
+
+class Country < ActiveRecord::Base
+  def self.enumerize
+    all.map {|country| [country.name, country.id]}
   end
 end
 
@@ -94,6 +105,8 @@ class User < ActiveRecord::Base
   enumerize :skill, :in => { noob: 0, casual: 1, pro: 2 }, scope: :shallow
 
   enumerize :account_type, :in => [:basic, :premium]
+
+  enumerize :country, in: -> {Country.enumerize}
 
   # There is no column for relationship enumeration for testing purposes: model
   # should not be broken even if the associated column does not exist yet.
@@ -616,4 +629,26 @@ describe Enumerize::ActiveRecordSupport do
 
     sql.must_include 'LIKE \'%foo%\''
   end
+
+  it 'lambda in' do
+    Country.delete_all
+    Country.create!(name: 'Korea')
+    Country.create!(name: 'USA')
+
+    User.delete_all
+
+    user = User.create(name: 'Hooney', country: 'Korea')
+    user.country.must_equal 'Korea'
+    user.country = 'USA'
+    user.save!
+    user.reload
+    user.country.must_equal 'USA'
+    Country.create!(name: 'Swiss')
+    user.country = 'Swiss'
+    user.save!
+    user.reload
+    user.country.must_equal 'Swiss'
+    user.country_value.must_equal Country.find_by(name: 'Swiss').id
+  end
+
 end

@@ -17,12 +17,11 @@ module Enumerize
         raise ArgumentError, ':i18n_scope option accepts only String or Array of strings' unless Array(options[:i18n_scope]).all? { |s| s.is_a?(String) }
         @i18n_scope = options[:i18n_scope]
       end
+      @values = @value_hash = nil
+      @value_class = options.fetch(:value_class, Value)
+      @in = options[:in]
 
-      value_class = options.fetch(:value_class, Value)
-      @values = Array(options[:in]).map { |v| value_class.new(self, *v).freeze }
-
-      @value_hash = Hash[@values.map { |v| [v.value.to_s, v] }]
-      @value_hash.merge! Hash[@values.map { |v| [v.to_s, v] }]
+      set_values_and_hash
 
       if options[:default]
         @default_value = find_default_value(options[:default])
@@ -30,6 +29,14 @@ module Enumerize
       end
 
       @skip_validations_value = options.fetch(:skip_validations, false)
+    end
+
+    def values
+      @values || Array(@in.call).map { |v| @value_class.new(self, *v).freeze }
+    end
+
+    def value_hash
+      @value_hash || Hash[values.map { |v| [v.value.to_s, v] }].merge(Hash[values.map { |v| [v.to_s, v] }])
     end
 
     def find_default_value(value)
@@ -41,7 +48,7 @@ module Enumerize
     end
 
     def find_value(value)
-      @value_hash[value.to_s] unless value.nil?
+      value_hash[value.to_s] unless value.nil?
     end
 
     def find_values(*values)
@@ -63,15 +70,15 @@ module Enumerize
     end
 
     def options(options = {})
-      values = if options.empty?
-        @values
+      _values = if options.empty?
+        values
       else
         raise ArgumentError, 'Options cannot have both :only and :except' if options[:only] && options[:except]
 
         only = Array(options[:only]).map(&:to_s)
         except = Array(options[:except]).map(&:to_s)
 
-        @values.reject do |value|
+        values.reject do |value|
           if options[:only]
             !only.include?(value)
           elsif options[:except]
@@ -80,11 +87,11 @@ module Enumerize
         end
       end
 
-      values.map { |v| [v.text, v.to_s] }
+      _values.map { |v| [v.text, v.to_s] }
     end
 
     def respond_to_missing?(method, include_private=false)
-      @value_hash.include?(method.to_s) || super
+      value_hash.include?(method.to_s) || super
     end
 
     def define_methods!(mod)
@@ -133,12 +140,18 @@ module Enumerize
     private
 
     def method_missing(method)
-      if @value_hash.include?(method.to_s)
+      if value_hash.include?(method.to_s)
         find_value(method)
       else
         super
       end
     end
+
+    def set_values_and_hash
+      @values = Array(@in).map { |v| @value_class.new(self, *v).freeze } unless @in.respond_to?(:call)
+      @value_hash = Hash[@values.map { |v| [v.value.to_s, v] }].merge(Hash[@values.map { |v| [v.to_s, v] }]) if @values
+    end
+
   end
 
   module Multiple
